@@ -1,42 +1,120 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HLS Video Player</title>
+    <title>Premium HLS Player</title>
+    
+    <!-- Plyr CSS for the beautiful UI -->
+    <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
+    
     <style>
-        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #1a1a1a; margin: 0; }
-        .container { width: 80%; max-width: 800px; text-align: center; }
-        video { width: 100%; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
-        h2 { color: white; margin-bottom: 20px; }
+        :root {
+            --plyr-color-main: #00b3ff; /* Custom brand color */
+        }
+        
+        body {
+            margin: 0;
+            padding: 0;
+            background: #0f172a;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: 'Inter', -apple-system, sans-serif;
+        }
+
+        .player-container {
+            width: 90%;
+            max-width: 900px;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        }
+
+        .info {
+            color: #94a3b8;
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        /* Responsive adjustments */
+        @media (max-width: 600px) {
+            .player-container { width: 100%; border-radius: 0; }
+        }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h2>M3U8 Video Player</h2>
-    <video id="video" controls></video>
-</div>
+    <div class="player-container">
+        <video id="player" playsinline controls crossorigin>
+            <!-- Fallback for browsers that don't support HLS or JS -->
+            <source src="https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8" type="application/x-mpegURL">
+        </video>
+    </div>
 
-<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <div class="info">
+        <h3>Premium M3U8 Stream</h3>
+        <p>Powered by Plyr + HLS.js</p>
+    </div>
 
-<script>
-  const video = document.getElementById('video');
-  const videoSrc = 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8'; // Replace with your .m3u8 URL
+    <!-- Load Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.0"></script>
+    <script src="https://cdn.plyr.io/3.7.8/plyr.js"></script>
 
-  if (Hls.isSupported()) {
-    const hls = new Hls();
-    hls.loadSource(videoSrc);
-    hls.attachMedia(video);
-    hls.on(Hls.Events.MANIFEST_PARSED, function() {
-      // Video is ready to play
-    });
-  }
-  // For Safari, which supports HLS natively without the library
-  else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-    video.src = videoSrc;
-  }
-</script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const video = document.querySelector('#player');
+            const source = video.getElementsByTagName('source')[0].src;
+            
+            // 1. Initialize Plyr options
+            const defaultOptions = {
+                controls: [
+                    'play-large', 'play', 'progress', 'current-time', 
+                    'mute', 'volume', 'captions', 'settings', 'pip', 'airplay', 'fullscreen'
+                ],
+                settings: ['quality', 'speed', 'loop'],
+                speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] }
+            };
 
+            if (!Hls.isSupported()) {
+                // For Safari/iOS where HLS is native
+                const player = new Plyr(video, defaultOptions);
+            } else {
+                // For Chrome, Firefox, etc.
+                const hls = new Hls();
+                hls.loadSource(source);
+                hls.attachMedia(video);
+                
+                window.hls = hls; // Export for debugging
+
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    // Extract quality levels from manifest for the Plyr menu
+                    const availableQualities = hls.levels.map((l) => l.height);
+                    
+                    defaultOptions.quality = {
+                        default: availableQualities[availableQualities.length - 1], // Highest
+                        options: availableQualities,
+                        forced: true,
+                        onChange: (e) => updateQuality(e),
+                    };
+
+                    const player = new Plyr(video, defaultOptions);
+                });
+
+                // Quality change logic
+                function updateQuality(newQuality) {
+                    window.hls.levels.forEach((level, levelIndex) => {
+                        if (level.height === newQuality) {
+                            window.hls.currentLevel = levelIndex;
+                        }
+                    });
+                }
+            }
+        });
+    </script>
 </body>
 </html>
+
