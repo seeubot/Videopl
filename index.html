@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HLS Video Player</title>
+    <style>
+        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background: #1a1a1a; margin: 0; }
+        .container { width: 80%; max-width: 800px; text-align: center; }
+        video { width: 100%; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+        h2 { color: white; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>M3U8 Video Player</h2>
+    <video id="video" controls></video>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+
+<script>
+  const video = document.getElementById('video');
+  const videoSrc = 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8'; // Replace with your .m3u8 URL
+
+  if (Hls.isSupported()) {
+    const hls = new Hls();
+    hls.loadSource(videoSrc);
+    hls.attachMedia(video);
+    hls.on(Hls.Events.MANIFEST_PARSED, function() {
+      // Video is ready to play
+    });
+  }
+  // For Safari, which supports HLS natively without the library
+  else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    video.src = videoSrc;
+  }
+</script>
+
+</body>
+</html>
