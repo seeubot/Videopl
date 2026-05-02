@@ -4,16 +4,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Dual Split HLS Player</title>
+    <title>Swipe to Change Player</title>
     
-    <!-- Plyr CSS -->
     <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
     
     <style>
-        :root {
-            --plyr-color-main: #ffffff;
-        }
-        
         body, html {
             margin: 0;
             padding: 0;
@@ -23,122 +18,199 @@
             overflow: hidden;
             display: flex;
             flex-direction: column;
+            user-select: none;
+            font-family: sans-serif;
         }
 
-        /* 60/40 Split Layout */
         .section-top {
             height: 60vh;
             width: 100vw;
             position: relative;
-            border-bottom: 2px solid #222;
+            z-index: 10;
+            perspective: 1000px;
+            overflow: hidden;
         }
 
         .section-bottom {
             height: 40vh;
             width: 100vw;
             position: relative;
+            z-index: 5;
             background: #050505;
+            border-top: 1px solid #222;
         }
 
-        /* Plyr container sizing */
+        .swipe-card {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            transition: transform 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+            cursor: grab;
+            touch-action: none;
+            background: #000;
+        }
+
+        .swipe-card.dragging {
+            transition: none;
+            cursor: grabbing;
+        }
+
         .plyr {
             width: 100%;
             height: 100%;
+            pointer-events: none;
         }
 
-        .plyr__video-wrapper {
-            height: 100% !important;
+        .plyr__controls {
+            display: none !important;
         }
 
         video {
             width: 100%;
             height: 100%;
-            object-fit: cover; /* Immersive vertical fit */
+            object-fit: cover;
         }
 
-        /* Ensure controls are visible and styled consistently on both sections */
-        .plyr--full-ui {
-            height: 100%;
+        /* Loading Indicator */
+        .loader {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 0.8rem;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            opacity: 0.5;
+            pointer-events: none;
         }
     </style>
 </head>
 <body>
 
-    <!-- Top Player Section (60%) -->
     <div class="section-top" id="top-container">
-        <video id="player-top" playsinline controls autoplay muted crossorigin>
-            <source src="https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8" type="application/x-mpegURL">
-        </video>
+        <div class="loader">Loading Next...</div>
+        <div class="swipe-card" id="swipe-card">
+            <video id="player-top" playsinline autoplay muted loop crossorigin></video>
+        </div>
     </div>
 
-    <!-- Bottom Player Section (40%) -->
     <div class="section-bottom" id="bottom-container">
-        <video id="player-bottom" playsinline controls autoplay muted crossorigin>
+        <video id="player-bottom" playsinline autoplay muted loop crossorigin>
             <source src="https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tears-of-steel.ism/.m3u8" type="application/x-mpegURL">
         </video>
     </div>
 
-    <!-- Load Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.0"></script>
     <script src="https://cdn.plyr.io/3.7.8/plyr.js"></script>
 
     <script>
-        const setupPlayer = (videoId, src) => {
+        const topPlaylist = [
+            'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
+            'https://bitdash-a.akamaihd.net/content/sintel/hls/playlist.m3u8',
+            'https://d1gnaphp93fop2.cloudfront.net/videos/multiresolution/rendition_new10.m3u8',
+            'https://res.cloudinary.com/dannykeane/video/upload/sp_full_hd/q_80:qmax_90,ac_none/v1/dk-memoji-dark.m3u8'
+        ];
+
+        let currentIdx = 0;
+        let hlsTop = null;
+        let plyrTop = null;
+
+        const loadVideo = (videoId, src, isTop = true) => {
             const video = document.getElementById(videoId);
             
-            // Standard control bar for both players
-            const controls = [
-                'play-large', 
-                'play', 
-                'progress', 
-                'current-time', 
-                'mute', 
-                'volume', 
-                'settings', 
-                'fullscreen'
-            ];
+            if (isTop && hlsTop) {
+                hlsTop.destroy();
+            }
 
-            const options = {
-                autoplay: true,
-                muted: true,
-                controls: controls,
-                settings: ['quality', 'speed'],
-                ratio: null
-            };
-
-            if (!Hls.isSupported()) {
-                const player = new Plyr(video, options);
-                player.on('ready', () => player.play().catch(() => {}));
-            } else {
-                const hls = new Hls({ capLevelToPlayerSize: true });
+            if (Hls.isSupported()) {
+                const hls = new Hls();
                 hls.loadSource(src);
                 hls.attachMedia(video);
+                if (isTop) hlsTop = hls;
 
                 hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                    const availableQualities = hls.levels.map((l) => l.height);
-                    options.quality = {
-                        default: availableQualities[availableQualities.length - 1],
-                        options: availableQualities,
-                        forced: true,
-                        onChange: (newQuality) => {
-                            hls.levels.forEach((level, index) => {
-                                if (level.height === newQuality) hls.currentLevel = index;
-                            });
-                        },
-                    };
-                    
-                    const player = new Plyr(video, options);
-                    player.on('ready', () => player.play().catch(() => {}));
+                    video.play().catch(() => {});
                 });
+            }
+
+            // Initialize Plyr if not already done
+            if (isTop && !plyrTop) {
+                plyrTop = new Plyr(video, { controls: [], clickToPlay: false });
+            } else if (!isTop) {
+                new Plyr(video, { controls: [], clickToPlay: false });
             }
         };
 
-        document.addEventListener('DOMContentLoaded', () => {
-            // Main Content Top
-            setupPlayer('player-top', 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8');
+        // Swipe Interaction logic
+        const card = document.getElementById('swipe-card');
+        let startX = 0;
+        let currentX = 0;
+        let isDragging = false;
+
+        const onStart = (e) => {
+            startX = e.pageX || e.touches[0].pageX;
+            isDragging = true;
+            card.classList.add('dragging');
+        };
+
+        const onMove = (e) => {
+            if (!isDragging) return;
+            currentX = (e.pageX || e.touches[0].pageX) - startX;
+            const rotate = currentX / 20;
+            card.style.transform = `translateX(${currentX}px) rotate(${rotate}deg)`;
+        };
+
+        const onEnd = () => {
+            if (!isDragging) return;
+            isDragging = false;
+            card.classList.remove('dragging');
             
-            // Content Bottom
-            setupPlayer('player-bottom', 'https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tears-of-steel.ism/.m3u8');
+            const threshold = window.innerWidth * 0.25;
+
+            if (Math.abs(currentX) > threshold) {
+                // Swipe Out
+                const direction = currentX > 0 ? 1 : -1;
+                card.style.transform = `translateX(${direction * 1000}px) rotate(${direction * 45}deg)`;
+                
+                // Change Video
+                currentIdx = (currentIdx + 1) % topPlaylist.length;
+                
+                setTimeout(() => {
+                    // Reset card position instantly while invisible
+                    card.style.transition = 'none';
+                    card.style.transform = 'translateX(0) rotate(0deg)';
+                    card.style.opacity = '0';
+                    
+                    // Load new source
+                    loadVideo('player-top', topPlaylist[currentIdx], true);
+                    
+                    // Fade back in
+                    setTimeout(() => {
+                        card.style.transition = 'opacity 0.5s ease';
+                        card.style.opacity = '1';
+                        setTimeout(() => card.style.transition = '', 500);
+                    }, 100);
+                }, 300);
+            } else {
+                // Snap Back
+                card.style.transform = `translateX(0) rotate(0deg)`;
+            }
+            currentX = 0;
+        };
+
+        card.addEventListener('mousedown', onStart);
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onEnd);
+        card.addEventListener('touchstart', onStart);
+        window.addEventListener('touchmove', onMove);
+        window.addEventListener('touchend', onEnd);
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadVideo('player-top', topPlaylist[currentIdx], true);
+            loadVideo('player-bottom', 'https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tears-of-steel.ism/.m3u8', false);
         });
     </script>
 </body>
