@@ -3,61 +3,79 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Premium HLS Player</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Dual Split HLS Player</title>
     
-    <!-- Plyr CSS for the beautiful UI -->
+    <!-- Plyr CSS -->
     <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
     
     <style>
         :root {
-            --plyr-color-main: #00b3ff; /* Custom brand color */
+            --plyr-color-main: #ffffff;
         }
         
-        body {
+        body, html {
             margin: 0;
             padding: 0;
-            background: #0f172a;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            overflow: hidden;
             display: flex;
             flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            font-family: 'Inter', -apple-system, sans-serif;
         }
 
-        .player-container {
-            width: 90%;
-            max-width: 900px;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        /* 60/40 Split Layout */
+        .section-top {
+            height: 60vh;
+            width: 100vw;
+            position: relative;
+            border-bottom: 2px solid #222;
         }
 
-        .info {
-            color: #94a3b8;
-            margin-top: 20px;
-            text-align: center;
+        .section-bottom {
+            height: 40vh;
+            width: 100vw;
+            position: relative;
+            background: #050505;
         }
 
-        /* Responsive adjustments */
-        @media (max-width: 600px) {
-            .player-container { width: 100%; border-radius: 0; }
+        /* Plyr container sizing */
+        .plyr {
+            width: 100%;
+            height: 100%;
+        }
+
+        .plyr__video-wrapper {
+            height: 100% !important;
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* Immersive vertical fit */
+        }
+
+        /* Ensure controls are visible and styled consistently on both sections */
+        .plyr--full-ui {
+            height: 100%;
         }
     </style>
 </head>
 <body>
 
-    <div class="player-container">
-        <video id="player" playsinline controls crossorigin>
-            <!-- Fallback for browsers that don't support HLS or JS -->
+    <!-- Top Player Section (60%) -->
+    <div class="section-top" id="top-container">
+        <video id="player-top" playsinline controls autoplay muted crossorigin>
             <source src="https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8" type="application/x-mpegURL">
         </video>
     </div>
 
-    <div class="info">
-        <h3>Premium M3U8 Stream</h3>
-        <p>Powered by Plyr + HLS.js</p>
+    <!-- Bottom Player Section (40%) -->
+    <div class="section-bottom" id="bottom-container">
+        <video id="player-bottom" playsinline controls autoplay muted crossorigin>
+            <source src="https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tears-of-steel.ism/.m3u8" type="application/x-mpegURL">
+        </video>
     </div>
 
     <!-- Load Libraries -->
@@ -65,54 +83,62 @@
     <script src="https://cdn.plyr.io/3.7.8/plyr.js"></script>
 
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const video = document.querySelector('#player');
-            const source = video.getElementsByTagName('source')[0].src;
+        const setupPlayer = (videoId, src) => {
+            const video = document.getElementById(videoId);
             
-            // 1. Initialize Plyr options
-            const defaultOptions = {
-                controls: [
-                    'play-large', 'play', 'progress', 'current-time', 
-                    'mute', 'volume', 'captions', 'settings', 'pip', 'airplay', 'fullscreen'
-                ],
-                settings: ['quality', 'speed', 'loop'],
-                speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] }
+            // Standard control bar for both players
+            const controls = [
+                'play-large', 
+                'play', 
+                'progress', 
+                'current-time', 
+                'mute', 
+                'volume', 
+                'settings', 
+                'fullscreen'
+            ];
+
+            const options = {
+                autoplay: true,
+                muted: true,
+                controls: controls,
+                settings: ['quality', 'speed'],
+                ratio: null
             };
 
             if (!Hls.isSupported()) {
-                // For Safari/iOS where HLS is native
-                const player = new Plyr(video, defaultOptions);
+                const player = new Plyr(video, options);
+                player.on('ready', () => player.play().catch(() => {}));
             } else {
-                // For Chrome, Firefox, etc.
-                const hls = new Hls();
-                hls.loadSource(source);
+                const hls = new Hls({ capLevelToPlayerSize: true });
+                hls.loadSource(src);
                 hls.attachMedia(video);
-                
-                window.hls = hls; // Export for debugging
 
                 hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                    // Extract quality levels from manifest for the Plyr menu
                     const availableQualities = hls.levels.map((l) => l.height);
-                    
-                    defaultOptions.quality = {
-                        default: availableQualities[availableQualities.length - 1], // Highest
+                    options.quality = {
+                        default: availableQualities[availableQualities.length - 1],
                         options: availableQualities,
                         forced: true,
-                        onChange: (e) => updateQuality(e),
+                        onChange: (newQuality) => {
+                            hls.levels.forEach((level, index) => {
+                                if (level.height === newQuality) hls.currentLevel = index;
+                            });
+                        },
                     };
-
-                    const player = new Plyr(video, defaultOptions);
+                    
+                    const player = new Plyr(video, options);
+                    player.on('ready', () => player.play().catch(() => {}));
                 });
-
-                // Quality change logic
-                function updateQuality(newQuality) {
-                    window.hls.levels.forEach((level, levelIndex) => {
-                        if (level.height === newQuality) {
-                            window.hls.currentLevel = levelIndex;
-                        }
-                    });
-                }
             }
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // Main Content Top
+            setupPlayer('player-top', 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8');
+            
+            // Content Bottom
+            setupPlayer('player-bottom', 'https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tears-of-steel.ism/.m3u8');
         });
     </script>
 </body>
